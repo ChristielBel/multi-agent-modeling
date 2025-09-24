@@ -11,61 +11,69 @@ using namespace std;
 class Agent {
 public:
     int id;
-    set<int> targetSetOfPatents;
-    set<int> existingSetOfPatents;
-    set<int> neededPatents;
-    int rounds = 0;
-    int iterations = 0;
+    set<int> targetPatents;
+    set<int> currentPatents;
+    set<int> missingPatents;
+    int communicationRounds = 0;
+    int completionStep = 0;
 
     Agent(int agentId) : id(agentId) {}
 
-    void updateNeededPatents() {
-        neededPatents.clear();
-        for (int t : targetSetOfPatents) {
-            if (existingSetOfPatents.find(t) == existingSetOfPatents.end()) {
-                neededPatents.insert(t);
+    void updateMissingPatents() {
+        missingPatents.clear();
+        for (int patentId : targetPatents) {
+            if (currentPatents.find(patentId) == currentPatents.end()) {
+                missingPatents.insert(patentId);
             }
         }
     }
 
     bool isComplete() const {
-        return neededPatents.empty();
+        return missingPatents.empty();
     }
 
     int findNeededPatent(const Agent& other) const {
-        for (int t : neededPatents) {
-            if (other.existingSetOfPatents.find(t) != other.existingSetOfPatents.end())
-                return t;
+        for (int patentId : missingPatents) {
+            if (other.currentPatents.find(patentId) != other.currentPatents.end())
+                return patentId;
         }
         return -1;
     }
 
     int findGiveablePatent(const Agent& other) const {
-        if (other.isComplete()) return -1;
-        for (int t : existingSetOfPatents) {
-            if (targetSetOfPatents.find(t) == targetSetOfPatents.end() &&
-                other.neededPatents.find(t) != other.neededPatents.end()) {
-                return t;
+        for (int patentId : currentPatents) {
+            if (other.missingPatents.find(patentId) != other.missingPatents.end()) {
+                return patentId;
             }
         }
+
+        if (!other.isComplete()) {
+            for (int patentId : currentPatents) {
+                if (targetPatents.find(patentId) == targetPatents.end() &&
+                    other.missingPatents.find(patentId) != other.missingPatents.end()) {
+                    return patentId;
+                }
+            }
+        }
+
         return -1;
     }
 
     bool exchangeWith(Agent& other) {
-        rounds++;
-        other.rounds++;
+        communicationRounds++;
+        other.communicationRounds++;
 
         int needed = findNeededPatent(other);
         if (needed == -1) return false;
 
         int giveToOther = findGiveablePatent(other);
 
-        existingSetOfPatents.insert(needed);
-        updateNeededPatents();
+        currentPatents.insert(needed);
+        updateMissingPatents();
 
         if (giveToOther != -1) {
-            other.existingSetOfPatents.insert(giveToOther);
-            other.updateNeededPatents();
+            other.currentPatents.insert(giveToOther);
+            other.updateMissingPatents();
         }
 
         return true;
@@ -74,118 +82,118 @@ public:
 
 class Simulation {
 private:
-    vector<Agent> agents;
-    int n;
-    int patentsPerTarget;
-    const int MAX_ITERATIONS = 10000;
+    vector<Agent> agentList;
+    int agentCount;
+    int patentsPerAgentTarget;
+    const int MAX_SIMULATION_STEPS = 10000;
     mt19937 rng;
 
 public:
     Simulation(int numAgents, int patentsPerAgent)
-        : n(numAgents), patentsPerTarget(patentsPerAgent) {
+        : agentCount(numAgents), patentsPerAgentTarget(patentsPerAgent) {
         rng.seed(static_cast<unsigned>(time(nullptr)));
     }
 
     void initialize() {
         createAgents();
-        assignTargets();
-        assignInitialPatents();
+        assignTargetPatents();
+        distributeInitialPatents();
     }
 
 private:
     void createAgents() {
-        for (int i = 0; i < n; i++) {
-            agents.emplace_back(i);
+        for (int i = 0; i < agentCount; i++) {
+            agentList.emplace_back(i);
         }
     }
 
-    void assignTargets() {
+    void assignTargetPatents() {
         int globalPatentId = 0;
-        for (auto& agent : agents) {
-            for (int j = 0; j < patentsPerTarget; j++) {
-                agent.targetSetOfPatents.insert(globalPatentId++);
+        for (auto& agent : agentList) {
+            for (int j = 0; j < patentsPerAgentTarget; j++) {
+                agent.targetPatents.insert(globalPatentId++);
             }
         }
     }
 
-    void assignInitialPatents() {
+    void distributeInitialPatents() {
         vector<int> allPatents;
-        for (auto& a : agents) {
-            allPatents.insert(allPatents.end(), a.targetSetOfPatents.begin(), a.targetSetOfPatents.end());
+        for (auto& agent : agentList) {
+            allPatents.insert(allPatents.end(), agent.targetPatents.begin(), agent.targetPatents.end());
         }
 
         shuffle(allPatents.begin(), allPatents.end(), rng);
 
         for (int i = 0; i < allPatents.size(); i++) {
-            agents[i % n].existingSetOfPatents.insert(allPatents[i]);
+            agentList[i % agentCount].currentPatents.insert(allPatents[i]);
         }
 
-        for (auto& a : agents) {
-            a.updateNeededPatents();
+        for (auto& agent : agentList) {
+            agent.updateMissingPatents();
         }
     }
 
 public:
     void run() {
-        bool finished = false;
+        bool allAgentsComplete = false;
         int iteration = 0;
 
-        while (!finished && iteration < MAX_ITERATIONS) {
+        while (!allAgentsComplete && iteration < MAX_SIMULATION_STEPS) {
             iteration++;
-            finished = simulateStep(iteration);
+            allAgentsComplete = simulateIteration(iteration);
         }
 
         printResults(iteration);
     }
 
 private:
-    bool simulateStep(int iteration) {
-        bool finished = true;
+    bool simulateIteration(int iteration) {
+        bool allComplete = true;
         vector<int> activeAgents;
 
-        for (int i = 0; i < n; i++) {
-            if (!agents[i].isComplete()) activeAgents.push_back(i);
+        for (int i = 0; i < agentCount; i++) {
+            if (!agentList[i].isComplete()) activeAgents.push_back(i);
         }
 
         shuffle(activeAgents.begin(), activeAgents.end(), rng);
 
         for (int i : activeAgents) {
-            if (agents[i].isComplete()) continue;
+            if (agentList[i].isComplete()) continue;
 
-            finished = false;
+            allComplete = false;
 
-            uniform_int_distribution<int> dist(0, n - 1);
+            uniform_int_distribution<int> dist(0, agentCount - 1);
             int j = dist(rng);
             if (j == i) continue;
 
-            if (agents[i].exchangeWith(agents[j]) && agents[i].iterations == 0) {
-                agents[i].iterations = iteration;
+            if (agentList[i].exchangeWith(agentList[j]) && agentList[i].completionStep == 0) {
+                agentList[i].completionStep = iteration;
             }
         }
 
-        return finished;
+        return allComplete;
     }
 
-    void printResults(int iterations) const {
+    void printResults(int iteration) const {
         cout << "=== Результаты моделирования ===\n";
-        for (const auto& a : agents) {
-            cout << "Агент " << a.id
-                << " | Целевой набор: " << a.targetSetOfPatents.size()
-                << " | Итерации: " << a.iterations
-                << " | Раунды коммуникаций: " << a.rounds << endl;
+        for (const auto& agent : agentList) {
+            cout << "Агент " << agent.id
+                << " | Целевой набор: " << agent.targetPatents.size()
+                << " | Итерации: " << agent.completionStep
+                << " | Раунды коммуникаций: " << agent.communicationRounds << endl;
         }
 
-        if (iterations >= MAX_ITERATIONS)
+        if (iteration >= MAX_SIMULATION_STEPS)
             cout << "\nВнимание: Достигнут лимит итераций.\n";
         else
-            cout << "\nСимуляция завершена за " << iterations << " итераций.\n";
+            cout << "\nСимуляция завершена за " << iteration << " итераций.\n";
     }
 };
 
 int main() {
     setlocale(LC_ALL, "Russian");
 
-    Simulation sim(4, 3);
+    Simulation sim(20, 5);
     sim.initialize();
     sim.run();
 
