@@ -80,9 +80,29 @@ public:
     double errorProb = 0.05;
     int n;
 
+    bool trapMode = false;      
+    Position lastServeTarget;    
+    bool hasLastTarget = false;  
+
     Strategy(int n) : n(n) {}
 
-    Square chooseSquare(const Player& agent, const Player& bot, const Court& court, std::default_random_engine& rng, bool isServe = false) {
+    Square chooseSquare(const Player& agent, const Player& bot, const Court& court,
+        std::default_random_engine& rng, bool isServe = false) {
+        if (trapMode && hasLastTarget) {
+            double maxDist = -1.0;
+            Square farthestSquare = court.squares[0];
+            for (const auto& sq : court.squares) {
+                double dist = std::hypot(sq.center.x - lastServeTarget.x, sq.center.y - lastServeTarget.y);
+                if (dist > maxDist) {
+                    maxDist = dist;
+                    farthestSquare = sq;
+                }
+            }
+            trapMode = false; 
+            hasLastTarget = false;
+            return farthestSquare;
+        }
+
         double bestScore = -1.0;
         Square bestSquare = court.squares[0];
 
@@ -113,6 +133,23 @@ public:
                     return Square{ {-1.0, -1.0}, 0.0, -1, -1 };
                 }
             }
+        }
+
+        if (isServe) {
+            double minBotDist = 1e9;
+            Square nearSquare = bestSquare;
+            for (const auto& sq : court.squares) {
+                double botDist = std::hypot(sq.center.x - bot.pos.x, sq.center.y - bot.pos.y);
+                if (botDist < minBotDist) {
+                    minBotDist = botDist;
+                    nearSquare = sq;
+                }
+            }
+
+            lastServeTarget = nearSquare.center;
+            hasLastTarget = true;
+            trapMode = true; 
+            return nearSquare;
         }
 
         return bestSquare;
@@ -231,26 +268,31 @@ int main() {
     const double l_robot = 3.0;
 
     std::ofstream results("results.csv");
-    results << "r_agent;l_agent;n;agentWins;botWins\n";
+    results << "r_agent;l_agent;n;agentWins;botWins;agentWinProbability\n";
 
-    for (double r_agent = 1.0; r_agent <= 3.0; r_agent += 1.0) {
-        for (double l_agent = 2.0; l_agent <= 4.0; l_agent += 1.0) {
-            int agentWinCount = 0;
-            int botWinCount = 0;
+    for (int n = 5; n <= 15; n += 5) {
+        for (double r_agent = 1.0; r_agent <= 2.0; r_agent += 1.0) {
+            for (double l_agent = 1.0; l_agent <= 3.0; l_agent += 1.0) {
+                int agentWinCount = 0;
+                int botWinCount = 0;
 
-            for (int i = 0; i < simulations; i++) {
-                Match match(r_agent, l_agent, r_robot, l_robot, n);
-                match.playMatch(bestOfSets);
+                for (int i = 0; i < simulations; i++) {
+                    Match match(r_agent, l_agent, r_robot, l_robot, n);
+                    match.playMatch(bestOfSets);
 
-                if (match.agentSets > match.botSets) agentWinCount++;
-                else botWinCount++;
+                    if (match.agentSets > match.botSets) agentWinCount++;
+                    else botWinCount++;
+                }
+
+                double winProbability = static_cast<double>(agentWinCount) / simulations;
+                results << std::fixed << std::setprecision(2)
+                    << r_agent << ";" << l_agent << ";" << n << ";"
+                    << agentWinCount << ";" << botWinCount << ";"
+                    << winProbability << "\n";
+
+                std::cout << "n=" << n << " r_agent=" << r_agent << " l_agent=" << l_agent
+                    << " Agent wins: " << agentWinCount << "/" << simulations << "\n";
             }
-
-            results << std::fixed << std::setprecision(1)
-                << r_agent << ";" << l_agent << ";" << n << ";" << agentWinCount << ";" << botWinCount << "\n";
-
-            std::cout << "r_agent=" << r_agent << " l_agent=" << l_agent
-                << " Agent wins: " << agentWinCount << "/" << simulations << "\n";
         }
     }
 
