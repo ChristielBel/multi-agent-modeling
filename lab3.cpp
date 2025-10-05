@@ -257,7 +257,5 @@ int main() {
     results.close();
     std::cout << "Симуляция завершена. Результаты в results.csv\n";
 
-    system("python plot_results.py");
-
     return 0;
 }
