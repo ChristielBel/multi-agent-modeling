@@ -4,6 +4,7 @@
 #include <random>
 #include <fstream>
 #include <string>
+#include <iomanip>
 
 struct Position {
     double x, y;
@@ -30,13 +31,17 @@ public:
         double squareSizeY = height / n;
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
-                squares.push_back({{(i + 0.5) * squareSizeX, (j + 0.5) * squareSizeY}, squareSizeX, i, j});
+                squares.push_back({ {(i + 0.5) * squareSizeX, (j + 0.5) * squareSizeY}, squareSizeX, i, j });
             }
         }
     }
 
-    Square getSquare(int row, int col) const {  
+    const Square& getSquare(int row, int col) const {
         return squares[row * n + col];
+    }
+
+    bool isOut(const Position& p) const {
+        return p.x < 0.0 || p.x > width || p.y < 0.0 || p.y > height;
     }
 };
 
@@ -50,8 +55,10 @@ public:
     Player(double r, double l, Position start) : r(r), l(l), pos(start) {}
 
     bool canHit(const Position& ball) const {
-        double dist = std::hypot(ball.x - pos.x, ball.y - pos.y);
-        return dist <= r;
+        double dx = ball.x - pos.x;
+        double dy = ball.y - pos.y;
+        if (dy < 0.0) return false; 
+        return std::hypot(dx, dy) <= r;
     }
 
     void moveTo(Position target) {
@@ -60,7 +67,8 @@ public:
         double dist = std::hypot(dx, dy);
         if (dist <= l) {
             pos = target;
-        } else {
+        }
+        else {
             pos.x += dx / dist * l;
             pos.y += dy / dist * l;
         }
@@ -74,44 +82,36 @@ public:
 
     Strategy(int n) : n(n) {}
 
-    Square chooseSquare(const Player& agent, const Player& bot, const Court& court, std::default_random_engine& rng) {
-        double bestScore = -1;
+    Square chooseSquare(const Player& agent, const Player& bot, const Court& court, std::default_random_engine& rng, bool isServe = false) {
+        double bestScore = -1.0;
         Square bestSquare = court.squares[0];
 
-        for (auto& sq : court.squares) {
-            // 1. Расстояние от болванчика до выбранного квадрата (чем больше — тем лучше для агента)
+        for (const auto& sq : court.squares) {
             double botDist = std::hypot(sq.center.x - bot.pos.x, sq.center.y - bot.pos.y);
-
-            // 2. Расстояние от агента до квадрата (чем меньше — тем лучше для агента)
             double agentDist = std::hypot(sq.center.x - agent.pos.x, sq.center.y - agent.pos.y);
-
-            // 3. Вероятность, что агент сможет добраться до мяча
-            double hitProbability = std::min(1.0, agent.r / (agentDist + 0.1)); // +0.1 чтобы избежать деления на 0
-
-            // 4. Итоговая оценка квадрата: балансируем расстояния и вероятность попадания
+            double hitProbability = std::min(1.0, agent.r / (agentDist + 0.1));
             double score = botDist * hitProbability;
-
             if (score > bestScore) {
                 bestScore = score;
                 bestSquare = sq;
             }
         }
 
-        // Ошибка 5% — случайный соседний квадрат или аут
-        std::uniform_real_distribution<double> errorDist(0, 1);
-        if (errorDist(rng) < errorProb) {
-            int dRow[] = {-1, 0, 1, 0};
-            int dCol[] = {0, -1, 0, 1};
-            std::uniform_int_distribution<int> dir(0, 3);
-            int dirIndex = dir(rng);
-
-            int newRow = bestSquare.row + dRow[dirIndex];
-            int newCol = bestSquare.col + dCol[dirIndex];
-            if (newRow >= 0 && newRow < n && newCol >= 0 && newCol < n) {
-                bestSquare = court.getSquare(newRow, newCol);
-            } else {
-                // Попал в аут — возвращаем специальный квадрат
-                return {-1, -1, 0, -1, -1};
+        if (!isServe) {
+            std::uniform_real_distribution<double> errorDist(0.0, 1.0);
+            if (errorDist(rng) < errorProb) {
+                int dRow[] = { -1, 0, 1, 0 };
+                int dCol[] = { 0, -1, 0, 1 };
+                std::uniform_int_distribution<int> dir(0, 3);
+                int dirIndex = dir(rng);
+                int newRow = bestSquare.row + dRow[dirIndex];
+                int newCol = bestSquare.col + dCol[dirIndex];
+                if (newRow >= 0 && newRow < n && newCol >= 0 && newCol < n) {
+                    bestSquare = court.getSquare(newRow, newCol);
+                }
+                else {
+                    return Square{ {-1.0, -1.0}, 0.0, -1, -1 };
+                }
             }
         }
 
@@ -132,41 +132,42 @@ public:
     int agentSets = 0, botSets = 0;
 
     Match(double r_agent, double l_agent, double r_bot, double l_bot, int n)
-        : agent(r_agent, l_agent, {10, 0}),
-          bot(r_bot, l_bot, {10, 10}),
-          court(20, 10, n),
-          strategy(n) {
+        : agent(r_agent, l_agent, { 10.0, 0.0 }),
+        bot(r_bot, l_bot, { 10.0, 10.0 }),
+        court(20.0, 10.0, n),
+        strategy(n) {
         rng.seed(std::random_device{}());
     }
 
     bool simulatePoint(bool serve = false) {
-        Square targetSquare;
-        if (serve) {
-            targetSquare = strategy.chooseSquare(agent, bot, court, rng);
-            if (targetSquare.row == -1) return false; // аут при подаче
-        } else {
-            targetSquare = strategy.chooseSquare(agent, bot, court, rng);
-            if (targetSquare.row == -1) return false;
+        Square targetSquare = strategy.chooseSquare(agent, bot, court, rng, serve);
+
+        if (targetSquare.row == -1) {
+            return false;
         }
 
-        // Болванчик пытается отбить
-        std::uniform_real_distribution<double> noise(-targetSquare.size / 2, targetSquare.size / 2);
-        Position ball = {targetSquare.center.x + noise(rng), targetSquare.center.y + noise(rng)};
+        std::uniform_real_distribution<double> noise(-targetSquare.size / 2.0, targetSquare.size / 2.0);
+        Position ball = { targetSquare.center.x + noise(rng), targetSquare.center.y + noise(rng) };
+
+        if (court.isOut(ball)) {
+            return false;
+        }
+
         bot.moveTo(ball);
-
         if (!bot.canHit(ball)) {
-            agentPoints++;
-            return true;
+            return true; 
         }
 
-        // Болванчик отправляет мяч в случайную точку половины корта агента
-        std::uniform_real_distribution<double> xDist(0, court.width / 2);
-        std::uniform_real_distribution<double> yDist(0, court.height);
-        Position returnBall = {xDist(rng), yDist(rng)};
-        agent.moveTo(returnBall);
+        std::uniform_real_distribution<double> xDist(0.0, court.width);
+        std::uniform_real_distribution<double> yDist(0.0, court.height / 2.0);
+        Position returnBall = { xDist(rng), yDist(rng) };
 
+        if (court.isOut(returnBall)) {
+            return true; 
+        }
+
+        agent.moveTo(returnBall);
         if (!agent.canHit(returnBall)) {
-            botPoints++;
             return false;
         }
 
@@ -177,10 +178,10 @@ public:
         agentPoints = 0;
         botPoints = 0;
         while (true) {
-            bool serve = (agentPoints + botPoints == 0) && firstServe;
-            bool agentWon = simulatePoint(serve);
+            bool serveNow = (agentPoints + botPoints == 0) && firstServe;
+            bool agentWonPoint = simulatePoint(serveNow);
 
-            if (agentWon) agentPoints++;
+            if (agentWonPoint) agentPoints++;
             else botPoints++;
 
             if (agentPoints >= 4 && agentPoints - botPoints >= 2) {
@@ -199,7 +200,6 @@ public:
         botGames = 0;
         while (true) {
             playGame();
-
             if (agentGames >= 6 && agentGames - botGames >= 2) {
                 agentSets++;
                 break;
@@ -221,14 +221,17 @@ public:
 };
 
 int main() {
+    setlocale(LC_ALL, "Russian");
     const int simulations = 100;
     const int bestOfSets = 2;
+
     const int n = 10;
+
     const double r_robot = 2.0;
     const double l_robot = 3.0;
 
     std::ofstream results("results.csv");
-    results << "r_agent,l_agent,n,agentWins,botWins\n";
+    results << "r_agent;l_agent;n;agentWins;botWins\n";
 
     for (double r_agent = 1.0; r_agent <= 3.0; r_agent += 1.0) {
         for (double l_agent = 2.0; l_agent <= 4.0; l_agent += 1.0) {
@@ -243,13 +246,18 @@ int main() {
                 else botWinCount++;
             }
 
-            results << r_agent << "," << l_agent << "," << n << "," << agentWinCount << "," << botWinCount << "\n";
+            results << std::fixed << std::setprecision(1)
+                << r_agent << ";" << l_agent << ";" << n << ";" << agentWinCount << ";" << botWinCount << "\n";
+
             std::cout << "r_agent=" << r_agent << " l_agent=" << l_agent
-                      << " Agent wins: " << agentWinCount << "/" << simulations << "\n";
+                << " Agent wins: " << agentWinCount << "/" << simulations << "\n";
         }
     }
 
     results.close();
     std::cout << "Симуляция завершена. Результаты в results.csv\n";
+
+    system("python plot_results.py");
+
     return 0;
 }
