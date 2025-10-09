@@ -270,7 +270,12 @@ int main() {
     std::ofstream results("results.csv");
     results << "r_agent;l_agent;n;agentWins;botWins;agentWinProbability\n";
 
+    std::cout << "---------------------------------------------------------\n";
+    std::cout << "        МОДЕЛИРОВАНИЕ МАТЧЕЙ: АГЕНТ против БОЛВАНЧИКА   \n";
+    std::cout << "---------------------------------------------------------\n\n";
+
     for (int n = 5; n <= 15; n += 5) {
+        std::cout << "==================== ПАРАМЕТР n = " << n << " ====================\n";
         for (double r_agent = 1.0; r_agent <= 2.0; r_agent += 1.0) {
             for (double l_agent = 1.0; l_agent <= 3.0; l_agent += 1.0) {
                 int agentWinCount = 0;
@@ -290,8 +295,12 @@ int main() {
                     << agentWinCount << ";" << botWinCount << ";"
                     << winProbability << "\n";
 
-                std::cout << "n=" << n << " r_agent=" << r_agent << " l_agent=" << l_agent
-                    << " Agent wins: " << agentWinCount << "/" << simulations << "\n";
+                std::cout << std::fixed << std::setprecision(2)
+                    << "- Радиус действия агента r = " << r_agent
+                    << ", Макс. перемещение l = " << l_agent << "\n"
+                    << "   Побед агента: " << agentWinCount
+                    << " из " << simulations
+                    << " (" << winProbability * 100 << "%)\n\n";
             }
         }
     }
