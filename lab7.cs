@@ -11,15 +11,16 @@ namespace EpidemicSimulation
     class Agent
     {
         public Vector2 Pos;
-        public Vector2 Dir;
+        public Vector2 Dir; 
         public double Speed; 
         public AgentState State;
         public int TimeToChangeDirection; 
         public double ViewAngleDeg; 
         public double ViewRadius;
-        public double MoveSpeedBase;
-        public int IncubationLeft = 0;
+        public double MoveSpeedBase; 
+        public int IncubationLeft = 0; 
         public Random Rand;
+        public bool IsMutant = false;
 
         public Agent(double x, double y, Vector2 dir, double baseSpeed, double viewAngleDeg, double viewRadius, Random rand)
         {
@@ -120,6 +121,10 @@ namespace EpidemicSimulation
         private double ZombieSpeedFactor = 0.85; 
         private double HealthyFleeFactor = 1.25;
 
+        private double MutationProb = 0.02; 
+        private double MutantSpeedFactor = 1.10; 
+        private double MutantViewRadiusFactor = 1.20; 
+
         public Simulation() { }
 
         public double RunSingle(int n, int m, int seed)
@@ -177,7 +182,7 @@ namespace EpidemicSimulation
                     if (ai.State == AgentState.Zombie)
                     {
                         viewAngle = ai.ViewAngleDeg * 0.75; 
-                        viewRadius = ai.ViewRadius * 1.1;
+                        viewRadius = ai.ViewRadius * 1.1; 
                     }
 
                     for (int j = 0; j < n; j++)
@@ -275,7 +280,16 @@ namespace EpidemicSimulation
                         if (a.IncubationLeft <= 0)
                         {
                             a.State = AgentState.Zombie;
-                            a.Speed = a.MoveSpeedBase * ZombieSpeedFactor;
+
+                            if (rand.NextDouble() < MutationProb)
+                            {
+                                a.IsMutant = true;
+                                a.Speed = a.MoveSpeedBase * ZombieSpeedFactor * MutantSpeedFactor;
+                            }
+                            else
+                            {
+                                a.Speed = a.MoveSpeedBase * ZombieSpeedFactor;
+                            }
                         }
                     }
                 }
@@ -320,7 +334,7 @@ namespace EpidemicSimulation
                             }
                             var angleTo = Math.Atan2(v.Y, v.X);
                             var angleDir = Math.Atan2(a.Dir.Y, a.Dir.X);
-                            double angleDiff = NormalizeAngleRad(angleTo - angleDir);
+                            double angleDiff = NormalizeAngleRad(angleTo - angleDir); 
                             zombiesSeen.Add((j, angleDiff));
                         }
 
@@ -342,7 +356,8 @@ namespace EpidemicSimulation
                                 a.Dir = Rotate(a.Dir, -Math.PI / 2.0);
                             }
 
-                            a.Speed = a.MoveSpeedBase * HealthyFleeFactor;
+                            double panicBoost = 1.0 + 0.15 * zombiesSeen.Count;
+                            a.Speed = a.MoveSpeedBase * HealthyFleeFactor * panicBoost;
                         }
                         else
                         {
@@ -355,8 +370,8 @@ namespace EpidemicSimulation
                     }
                     else if (a.State == AgentState.Zombie)
                     {
-                        double zombieViewAngle = a.ViewAngleDeg * 0.75;
-                        double zombieViewRadius = a.ViewRadius * 1.1;
+                        double zombieViewAngle = a.IsMutant ? a.ViewAngleDeg : a.ViewAngleDeg * 0.75;
+                        double zombieViewRadius = a.IsMutant ? a.ViewRadius * MutantViewRadiusFactor : a.ViewRadius * 1.1;
                         int targetIdx = -1;
                         double nearestDist = double.MaxValue;
                         foreach (var j in seenBy[i])
@@ -407,13 +422,15 @@ namespace EpidemicSimulation
 
                     a.TimeToChangeDirection = Math.Max(0, a.TimeToChangeDirection - 1);
                 } 
+
                 foreach (var a in agents)
                 {
                     a.StepMovementBounds(AreaSize);
                 }
 
                 t++;
-            }
+            } 
+           
             return Tlimit;
         }
 
@@ -451,7 +468,7 @@ namespace EpidemicSimulation
             foreach (var n in nValues)
             {
                 int[] mValues;
-                if (n == 10) mValues = new int[] { 3, 5, 7, 9 };
+                if (n == 10) mValues = new int[] { 6, 7, 8, 9 };
                 else if (n == 20) mValues = new int[] { 5, 8, 10, 15 };
                 else if (n == 50) mValues = new int[] { 10, 15, 20, 35 };
                 else mValues = new int[] { 15, 25, 30, 50 };
@@ -459,7 +476,7 @@ namespace EpidemicSimulation
                 foreach (var m in mValues)
                 {
                     pairIndex++;
-                    Console.WriteLine($"[{pairIndex}/{totalPairs}] Running experiments for n={n}, m={m} ({ExperimentsPerPair} runs) ...");
+                    WriteColor(ConsoleColor.Cyan, $"[{pairIndex}/{totalPairs}] Running experiments for n={n}, m={m} ({ExperimentsPerPair} runs) ...");
                     double sum = 0;
                     int seedBase = globalRand.Next();
 
@@ -470,28 +487,36 @@ namespace EpidemicSimulation
                         sum += t;
 
                         if ((e + 1) % 100 == 0)
-                            Console.WriteLine($"  progress: {e + 1}/{ExperimentsPerPair} (latest t={t})");
+                            WriteColor(ConsoleColor.DarkGray, $"  progress: {e + 1}/{ExperimentsPerPair} (latest t={t})");
                     }
 
                     double avg = sum / ExperimentsPerPair;
                     results.Add((n, m, avg));
-                    Console.WriteLine($"-> Done n={n}, m={m} average time = {avg:F2} iterations.");
+                    WriteColor(ConsoleColor.Green, $"-> Done n={n}, m={m} average time = {avg:F2} iterations.");
                     csvLines.Add($"{n},{m},{avg:F2},{ExperimentsPerPair},{Tlimit}");
                 }
             }
 
             Console.WriteLine();
-            Console.WriteLine("Summary table (average time until no healthy agents remain):");
-            Console.WriteLine(" n\t m\t avg_time");
+            WriteColor(ConsoleColor.Yellow, "Summary table (average time until no healthy agents remain):");
+            WriteColor(ConsoleColor.White, " n\t m\t avg_time");
             foreach (var r in results)
             {
-                Console.WriteLine($" {r.n}\t {r.m}\t {r.averageTime:F2}");
+                WriteColor(ConsoleColor.Magenta, $" {r.n}\t {r.m}\t {r.averageTime:F2}");
             }
 
             var outPath = "results.csv";
             File.WriteAllLines(outPath, csvLines);
             Console.WriteLine();
-            Console.WriteLine($"Results saved to {outPath}");
+            WriteColor(ConsoleColor.DarkYellow, $"Results saved to {outPath}");
+        }
+
+        static void WriteColor(ConsoleColor color, string text)
+        {
+            var old = Console.ForegroundColor;
+            Console.ForegroundColor = color;
+            Console.WriteLine(text);
+            Console.ForegroundColor = old;
         }
     }
 
@@ -501,8 +526,8 @@ namespace EpidemicSimulation
         {
            var sim = new Simulation();
             sim.RunBatchAndSave();
-            Console.WriteLine("Finished. Press Enter to exit.");
             Console.ReadLine();
+            Console.ResetColor();
         }
     }
 }
