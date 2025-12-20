@@ -331,12 +331,18 @@ namespace MarsColoniesSimulation
                 double medianLifetime = CalculateMedian(lifetimes);
 
                 Console.WriteLine($"  Итоги для баланса {B}:");
+                Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"    Побед: {totalWins} ({winProb:P2})");
+                Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"    Поражений: {totalLosses} ({lossProb:P2})");
+                Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"    Среднее время жизни: {avgLifetime:F2}");
                 Console.WriteLine($"    Медианное время жизни: {medianLifetime:F2}");
+                Console.WriteLine($"    Медианное время жизни: {medianLifetime:F2}");
+                Console.ResetColor();
                 Console.WriteLine($"    Минимальное время: {lifetimes.Min()}");
                 Console.WriteLine($"    Максимальное время: {lifetimes.Max()}");
+                Console.ResetColor();
 
                 allResults.Add(new SimulationResult
                 {
