@@ -282,26 +282,30 @@ namespace MarsColoniesSimulation
     class Program
     {
         static void Main()
-        { 
+        {
             double[] initialBalances = { 50, 75, 100, 125, 150 };
-            int[] auctionPeriods = { 5, 10, 15, 20 };
-            int numExperiments = 100; 
+            int numExperiments = 100;
+            int totalColoniesPerExperiment = 100;
 
             var allResults = new List<SimulationResult>();
+            int totalSimulations = initialBalances.Length * numExperiments;
+            int currentSimulation = 0;
 
             foreach (var B in initialBalances)
             {
+                Console.WriteLine($"\n--- Эксперимент с начальным балансом: {B} ---");
                 var lifetimes = new List<int>();
                 int totalWins = 0;
                 int totalLosses = 0;
 
                 for (int exp = 0; exp < numExperiments; exp++)
                 {
+                    currentSimulation++;
+
                     Random rnd = new Random(Guid.NewGuid().GetHashCode());
-                    int colonyCount = 100;
 
                     var colonies = new List<Colony>();
-                    for (int i = 0; i < colonyCount; i++)
+                    for (int i = 0; i < totalColoniesPerExperiment; i++)
                         colonies.Add(new Colony(
                             i,
                             B,
@@ -321,6 +325,19 @@ namespace MarsColoniesSimulation
                     }
                 }
 
+                double winProb = (double)totalWins / (totalWins + totalLosses);
+                double lossProb = (double)totalLosses / (totalWins + totalLosses);
+                double avgLifetime = lifetimes.Average();
+                double medianLifetime = CalculateMedian(lifetimes);
+
+                Console.WriteLine($"  Итоги для баланса {B}:");
+                Console.WriteLine($"    Побед: {totalWins} ({winProb:P2})");
+                Console.WriteLine($"    Поражений: {totalLosses} ({lossProb:P2})");
+                Console.WriteLine($"    Среднее время жизни: {avgLifetime:F2}");
+                Console.WriteLine($"    Медианное время жизни: {medianLifetime:F2}");
+                Console.WriteLine($"    Минимальное время: {lifetimes.Min()}");
+                Console.WriteLine($"    Максимальное время: {lifetimes.Max()}");
+
                 allResults.Add(new SimulationResult
                 {
                     ParameterValue = B,
@@ -331,12 +348,31 @@ namespace MarsColoniesSimulation
             }
 
             SaveResultsToCSV(allResults, "simulation_results_balance.csv");
+
+            Console.WriteLine("\n=== Итоговая статистика ===");
+            Console.WriteLine($"Всего симуляций: {totalSimulations}");
+            Console.WriteLine($"Всего колоний: {totalSimulations * totalColoniesPerExperiment}");
+            Console.WriteLine($"\nДанные сохранены в файл: simulation_results_balance.csv");
+        }
+
+        static double CalculateMedian(List<int> numbers)
+        {
+            if (numbers == null || numbers.Count == 0)
+                return 0;
+
+            var sorted = numbers.OrderBy(n => n).ToList();
+            int count = sorted.Count;
+
+            if (count % 2 == 0)
+                return (sorted[count / 2 - 1] + sorted[count / 2]) / 2.0;
+            else
+                return sorted[count / 2];
         }
 
         static List<Artifact> CreateArtifacts()
         {
             return new List<Artifact>
-        {
+            {
                 new("14", 20, c =>
                 {
                     c.ActiveEffects.Add(new Effect(EffectType.IncomeFromExpensePercent, EffectDurationType.Iterations, 5, 0.2));
@@ -371,14 +407,33 @@ namespace MarsColoniesSimulation
         }
 
         static void SaveResultsToCSV(List<SimulationResult> results, string filename)
+        {
+            using (var sw = new StreamWriter(filename))
             {
-                using var sw = new StreamWriter(filename);
-                sw.WriteLine("ParameterValue,Wins,Losses,Lifetimes");
+                sw.WriteLine("ParameterValue,Wins,Losses,WinProbability,LossProbability,AvgLifetime,MedianLifetime,MinLifetime,MaxLifetime");
                 foreach (var r in results)
                 {
-                    string lifetimes = string.Join(";", r.Lifetimes);
-                    sw.WriteLine($"{r.ParameterValue},{r.Wins},{r.Losses},\"{lifetimes}\"");
+                    double total = r.Wins + r.Losses;
+                    double winProb = r.Wins / total;
+                    double lossProb = r.Losses / total;
+                    double avgLifetime = r.Lifetimes.Average();
+                    double medianLifetime = CalculateMedian(r.Lifetimes);
+
+                    sw.WriteLine($"{r.ParameterValue},{r.Wins},{r.Losses},{winProb:F4},{lossProb:F4},{avgLifetime:F2},{medianLifetime:F2},{r.Lifetimes.Min()},{r.Lifetimes.Max()}");
+                }
+            }
+
+            using (var sw = new StreamWriter("detailed_" + filename))
+            {
+                sw.WriteLine("ParameterValue,Lifetime");
+                foreach (var r in results)
+                {
+                    foreach (var lifetime in r.Lifetimes)
+                    {
+                        sw.WriteLine($"{r.ParameterValue},{lifetime}");
+                    }
                 }
             }
         }
     }
+}
